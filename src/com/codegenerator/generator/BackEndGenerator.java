@@ -1,0 +1,1592 @@
+package com.codegenerator.generator;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.Reader;
+import java.io.StringReader;
+import java.io.Writer;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.sql.SQLException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import com.codegenerator.connection.JDBCManager;
+import com.codegenerator.util.Column;
+import com.codegenerator.util.DataTypeConverter;
+import com.codegenerator.util.FieldNameFormatter;
+import com.codegenerator.util.FileManager;
+import com.codegenerator.util.ForeignKeyReferences;
+import com.codegenerator.util.PropertiesReading;
+import com.codegenerator.util.ScriptRunner;
+import com.codegenerator.util.Table;
+
+public class BackEndGenerator {
+
+	Set<Object[]> tables;
+	JDBCManager jdbcManager;
+	String packageName;
+	String workspace;
+	private String projectName;
+	String packagePath = "";
+	String resourcesPath = "";
+	String databaseName;
+	String server = "";
+	String architecture = "mvc";
+
+	private int processProgress = 0;
+
+	boolean addOAuth2;
+	Boolean existProject = false;
+	Boolean addTablesOAuth = false;
+
+	public BackEndGenerator(String server, String databaseName, Set<Object[]> tables, JDBCManager jdbcManager,
+			String workspace, String projectName, String packageName, String architecture, boolean addOAuth2,
+			Boolean existProject, Boolean addTablesOAuth) {
+		this.databaseName = databaseName;
+		this.tables = tables;
+		this.jdbcManager = jdbcManager;
+		this.packageName = packageName;
+		this.workspace = workspace;
+		this.projectName = projectName;
+		this.packagePath = workspace + "\\" + projectName + "\\src\\main\\java";
+		this.resourcesPath = workspace + "\\" + projectName + "\\src\\main\\resources";
+		this.server = server;
+		this.architecture = architecture;
+		this.addOAuth2 = addOAuth2;
+		this.existProject = existProject;
+		this.addTablesOAuth = addTablesOAuth;
+	}
+
+	public BackEndGenerator(String server, String databaseName, Set<Object[]> tables, JDBCManager jdbcManager,
+			String workspace, String projectName, String packageName, boolean addOAuth2, Boolean existProject,
+			Boolean addTablesOAuth) {
+		this.databaseName = databaseName;
+		this.tables = tables;
+		this.jdbcManager = jdbcManager;
+		this.packageName = packageName;
+		this.workspace = workspace;
+		this.projectName = projectName;
+		this.packagePath = workspace + "\\" + projectName + "\\src\\main\\java";
+		this.resourcesPath = workspace + "\\" + projectName + "\\src\\main\\resources";
+		this.server = server;
+		this.addOAuth2 = addOAuth2;
+		this.existProject = existProject;
+		this.addTablesOAuth = addTablesOAuth;
+	}
+
+	public boolean generar() {
+		setProcessProgress(0);
+		printLog("Generando...");
+		try {
+
+			String packageNameEntity = "";
+			String packageNameModel = "";
+			String packageNameDTO = "";
+			String packageNameDAO = "";
+			String packageNameRepository = "";
+			String packageNameRepositoryImpl = "";
+			String packageNameSevice = "";
+			String packageNameServiceImpl = "";
+			String packageNameController = "";
+
+			printLog("Creando Directorio para backend..");
+
+			FileManager.createRootDirectory(workspace, projectName);
+			FileManager.createPackage(this.packagePath, this.packageName);
+			setProcessProgress(20);
+			Set<Object> schemas = tables.stream().filter(arr -> arr.length > 0).map(arr -> arr[0])
+					.collect(Collectors.toSet());
+
+			for (Object schema : schemas) {
+
+				String schameName = ((String) schema).toLowerCase();
+				if (schameName.equals("dbo")) {
+					schameName = "";
+				}
+
+				if (this.architecture.equals("mvc")) {
+					packageNameEntity = this.packageName + ".model" + (schameName.equals("") ? "" : "." + schameName);
+					packageNameDAO = this.packageName + ".repository" + (schameName.equals("") ? "" : "." + schameName);
+					packageNameRepositoryImpl = this.packageName + ".repository.impl"
+							+ (schameName.equals("") ? "" : "." + schameName);
+					packageNameSevice = this.packageName + ".service" + (schameName.equals("") ? "" : "." + schameName);
+					packageNameServiceImpl = this.packageName + ".service.impl"
+							+ (schameName.equals("") ? "" : "." + schameName);
+					packageNameController = this.packageName + ".controller"
+							+ (schameName.equals("") ? "" : "." + schameName);
+
+//					FileManager.createPackage(this.packagePath, this.packageName + ".configuration");
+//					FileManager.createPackage(this.packagePath, this.packageName + ".model");
+//					FileManager.createPackage(this.packagePath, this.packageName + ".repository.impl");
+//					FileManager.createPackage(this.packagePath, this.packageName + ".service.impl");
+//					FileManager.createPackage(this.packagePath, this.packageName + ".controller");
+
+					FileManager.createPackage(this.packagePath, this.packageName + ".configuration");
+					FileManager.createPackage(this.packagePath, packageNameEntity);
+					FileManager.createPackage(this.packagePath, packageNameRepositoryImpl);
+					FileManager.createPackage(this.packagePath, packageNameSevice);
+					FileManager.createPackage(this.packagePath, packageNameDAO);
+					FileManager.createPackage(this.packagePath, packageNameServiceImpl);
+					FileManager.createPackage(this.packagePath, packageNameController);
+				} else if (this.architecture.equals("hexagonal")) {
+
+					packageNameEntity = this.packageName + ".infrastructure.adapters.output.persistence.entity"
+							+ (schameName.equals("") ? "" : "." + schameName);
+
+					packageNameRepository = this.packageName + ".application.ports.output"
+							+ (schameName.equals("") ? "" : "." + schameName);
+
+					packageNameDAO = this.packageName + ".infrastructure.adapters.output.persistence"
+							+ (schameName.equals("") ? "" : "." + schameName);
+
+					packageNameRepositoryImpl = this.packageName + ".infrastructure.adapters.output.persistence"
+							+ (schameName.equals("") ? "" : "." + schameName) + ".repository";
+					packageNameSevice = this.packageName + ".application.ports.input"
+							+ (schameName.equals("") ? "" : "." + schameName);
+					packageNameServiceImpl = this.packageName + ".application.usecases"
+							+ (schameName.equals("") ? "" : "." + schameName);
+					packageNameController = this.packageName + ".infrastructure.adapters.input.rest"
+							+ (schameName.equals("") ? "" : "." + schameName);
+					packageNameModel = this.packageName + ".domain.model";
+					packageNameDTO = this.packageName + ".infrastructure.adapters.input.dto"
+							+ (schameName.equals("") ? "" : "." + schameName);
+
+					FileManager.createPackage(this.packagePath, this.packageName + ".configuration");
+					FileManager.createPackage(this.packagePath, packageNameEntity);
+					FileManager.createPackage(this.packagePath, packageNameRepository);
+					FileManager.createPackage(this.packagePath, packageNameRepositoryImpl);
+					FileManager.createPackage(this.packagePath, packageNameSevice);
+					FileManager.createPackage(this.packagePath, packageNameDAO);
+					FileManager.createPackage(this.packagePath, packageNameServiceImpl);
+					FileManager.createPackage(this.packagePath, packageNameModel);
+					FileManager.createPackage(this.packagePath, packageNameController);
+					FileManager.createPackage(this.packagePath, packageNameDTO);
+				}
+
+				Set<Object[]> tablesBySchema = tables.stream().filter(arr -> arr.length > 0 && (arr[0]).equals(schema))
+//						.map(arr -> arr[1])
+						.collect(Collectors.toSet());
+				int availableTime = 50;
+				int i = 30;
+				if (!tablesBySchema.isEmpty()) {
+					tablesBySchema = tablesBySchema.stream().filter(t -> !t[1].toString().startsWith("vw_"))
+							.collect(Collectors.toSet());
+
+					for (Object[] table : tablesBySchema) {
+						i += (availableTime / (tablesBySchema.size()));
+						setProcessProgress(i);
+						String tableName = (String) table[1];
+						if (tableName.equals("BalanceCalculateLog"))
+							System.out.println();
+
+						printLog("Obteniendo columnas de la tabla " + (table[1] + ""));
+						List<Column> columns = jdbcManager.getColumnsByTable(databaseName, tableName);
+
+						List<Column> col = columns.stream().filter(x -> x.getIsPrimaryKey())
+								.collect(Collectors.toList());
+						if (col.size() >= 1) {
+							Table tbl = new Table();
+							tbl.setSchema(schameName);
+							tbl.setName(tableName);
+							tbl.setColumns(columns);
+							
+							tbl.setTableReferences(jdbcManager.getTableReferences(this.databaseName,schameName, tableName));
+							System.out.println();
+							printLog("Generando modelo de la tabla " + (table[1] + ""));
+							generateEntity(packageNameEntity, tbl, ((boolean) table[2]));
+
+							printLog("Generando controlador de la tabla " + (table[1] + ""));
+							generateModel(packageNameModel, tbl, ((boolean) table[2]));
+							generateDTO(packageNameDTO, tbl, ((boolean) table[2]));
+
+							printLog("Generando repositorio de la tabla " + (table[1] + ""));
+							generateDAO(packageNameEntity, packageNameDAO, tbl);
+							generateRepository(packageNameModel, packageNameRepository, tbl);
+							generateRepositoryImpl(packageNameModel, packageNameEntity, packageNameDAO,
+									packageNameRepositoryImpl, packageNameRepository, tbl);
+
+							printLog("Generando servicio de la tabla " + (table[1] + ""));
+
+							generateService(packageNameModel, packageNameSevice, tbl);
+							generateServiceImpl(packageNameModel, packageNameSevice, packageNameServiceImpl,
+									packageNameRepository, tbl);
+
+							printLog("Generando controlador de la tabla " + (table[1] + ""));
+							generateController(packageNameDTO, packageNameModel, packageNameController,
+									packageNameSevice, tbl);
+						}
+					}
+				}
+			}
+
+			setProcessProgress(70);
+
+			if (!existProject) {
+				printLog("Preparando carpeta util...");
+				// Preparar carpteta util
+				String folderSrcUtil = PropertiesReading.folder_codegenerator_util
+						+ (this.architecture.equals("hexagonal") ? "//hexagonal//backend" : "//mvc") + "//util";
+				System.out.println(folderSrcUtil);
+				String folderTrgUtil = packagePath + "\\" + packageName.replace(".", "\\") + "\\util";
+				FileManager.copyDir(folderSrcUtil, folderTrgUtil, false);
+
+				FileManager.replaceTextInFilesFolder(packagePath + "\\" + packageName.replace(".", "\\") + "\\util",
+						"[packageName]", packageName);
+
+				printLog("Preparando clase principal de spring Boot Application.java...");
+
+				// Preparar clase principal de spring Boot Application.java
+				FileManager.copyDir(
+						PropertiesReading.folder_codegenerator_util
+								+ (this.architecture.equals("hexagonal") ? "//hexagonal//backend" : "//mvc")
+								+ "/Application.java",
+						packagePath + "\\" + packageName.replace(".", "\\") + "\\Application.java", false);
+
+				FileManager.replaceTextInFile(
+						packagePath + "\\" + packageName.replace(".", "\\") + "\\Application.java", "[packageName]",
+						packageName);
+				setProcessProgress(75);
+				printLog("Preparando configuración hibernate...");
+
+				// preparar configuracion Hibernate
+				FileManager.copyDir(PropertiesReading.folder_codegenerator_util
+						+ (this.architecture.equals("hexagonal") ? "//hexagonal//backend" : "//mvc") + "/configuration",
+						packagePath + "\\" + packageName.replace(".", "\\") + "\\configuration", false);
+
+				StringBuilder builder = new StringBuilder();
+
+				for (Object[] table : tables) {
+					String tableName = (String) table[1];
+					builder.append("\t\t\tauth.requestMatchers(\"/" + FieldNameFormatter.toPascalCase(tableName)
+							+ "/**\").permitAll();\n");
+				}
+
+				FileManager.replaceTextInFilesFolder(
+						packagePath + "\\" + packageName.replace(".", "\\") + "\\configuration\\SecurityConfig.java",
+						"//requestMatchers", builder.toString());
+
+				FileManager.replaceTextInFilesFolder(
+						packagePath + "\\" + packageName.replace(".", "\\") + "\\configuration", "[packageName]",
+						packageName);
+
+				setProcessProgress(80);
+				if (this.addOAuth2) {
+
+					printLog("Agregando Spring Security Oauth2...");
+					FileManager.copyDir(PropertiesReading.folder_codegenerator_util + "/mvc/security/pom.xml",
+							workspace + "\\" + projectName + "\\pom.xml", false);
+
+					FileManager.copyDir(PropertiesReading.folder_codegenerator_util + "/mvc/security/configuration",
+							packagePath + "\\" + packageName.replace(".", "\\") + "\\configuration", false);
+
+					FileManager.replaceTextInFilesFolder(
+							packagePath + "\\" + packageName.replace(".", "\\") + "\\configuration", "[packageName]",
+							packageName);
+
+					if (this.addTablesOAuth) {
+						printLog("\tCreando tablas requeridas por Spring Security Oauth2...");
+						addTablesSpringSecurity(databaseName);
+					}
+
+					printLog("\tCreando modelo user para Spring Security Oauth2...");
+					FileManager.copyDir(PropertiesReading.folder_codegenerator_util + "/mvc/security/model",
+							packagePath + "\\" + packageName.replace(".", "\\") + "\\model", false);
+
+					FileManager.replaceTextInFilesFolder(
+							packagePath + "\\" + packageName.replace(".", "\\") + "\\model", "[packageName]",
+							packageName);
+
+					setProcessProgress(85);
+					printLog("\tCreando repository user para Spring Security Oauth2...");
+					FileManager.copyDir(
+							PropertiesReading.folder_codegenerator_util
+									+ "/mvc/security/repository/UserRepository.java",
+							packagePath + "\\" + packageName.replace(".", "\\") + "\\repository\\UserRepository.java",
+							false);
+
+					FileManager.replaceTextInFilesFolder(
+							packagePath + "\\" + packageName.replace(".", "\\") + "\\repository\\UserRepository.java",
+							"[packageName]", packageName);
+
+					FileManager.copyDir(
+							PropertiesReading.folder_codegenerator_util
+									+ "/mvc/security/repository/impl/UserRepositoryImpl.java",
+							packagePath + "\\" + packageName.replace(".", "\\")
+									+ "\\repository\\impl\\UserRepositoryImpl.java",
+							false);
+
+					FileManager.replaceTextInFilesFolder(packagePath + "\\" + packageName.replace(".", "\\")
+							+ "\\repository\\impl\\UserRepositoryImpl.java", "[packageName]", packageName);
+					printLog("\tCreando service user para Spring Security Oauth2...");
+//					generateService("User");
+					printLog("\tCreando repository authority para Spring Security Oauth2...");
+//					generateRepository("Authority");
+//					generateService("Authority");
+
+					printLog("\tCreando UserDetailsService para Spring Security Oauth2...");
+					FileManager.copyDir(
+							PropertiesReading.folder_codegenerator_util + "/mvc/UserDetailsServiceImpl.java",
+							packagePath + "\\" + packageName.replace(".", "\\")
+									+ "\\service\\impl\\UserDetailDAOeImpl.java",
+							false);
+
+					FileManager.replaceTextInFile(packagePath + "\\" + packageName.replace(".", "\\")
+							+ "\\service\\impl\\UserDetailsServiceImpl.java", "[packageName]", packageName);
+				} else {
+					FileManager.copyDir(PropertiesReading.folder_codegenerator_util
+							+ (this.architecture.equals("hexagonal") ? "//hexagonal//backend" : "//mvc") + "/pom.xml",
+							workspace + "\\" + projectName + "\\pom.xml", false);
+				}
+
+				setProcessProgress(90);
+				printLog("Preparando archivo pom.xml...");
+
+				// preparar archivo pom.xml
+				FileManager.replaceTextInFile(workspace + "\\" + projectName + "\\pom.xml", "[packageName]",
+						packageName);
+				FileManager.replaceTextInFile(workspace + "\\" + projectName + "\\pom.xml", "[projectName]",
+						projectName);
+
+				FileManager.replaceTextInFile(workspace + "\\" + projectName + "\\pom.xml", "[DBgroupId]",
+						PropertiesReading.getProperty(jdbcManager.getServer() + ".groupId"));
+				FileManager.replaceTextInFile(workspace + "\\" + projectName + "\\pom.xml", "[DBartifactId]",
+						PropertiesReading.getProperty(jdbcManager.getServer() + ".artifactId"));
+				FileManager.replaceTextInFile(workspace + "\\" + projectName + "\\pom.xml", "[DBversion]",
+						PropertiesReading.getProperty(jdbcManager.getServer() + ".version"));
+
+				setProcessProgress(91);
+				printLog("Preparando archivo application.properties...");
+				// preparar archivo application.properties
+				FileManager.copyDir(PropertiesReading.folder_codegenerator_util
+						+ (this.architecture.equals("hexagonal") ? "//hexagonal//backend" : "//mvc") + "/resources",
+						resourcesPath, false);
+
+				String url = "jdbc:";
+				String prop = jdbcManager.getServer().trim() + ".datasource.driver-class-name";
+
+				String driver = PropertiesReading.getProperty(prop);
+				StringBuilder urlDB = new StringBuilder(
+						PropertiesReading.getProperty(jdbcManager.getServer() + ".datasource.url.databasename"));
+				url = urlDB.toString().replace("?1", jdbcManager.getHost()).replace("?2", jdbcManager.getPort())
+						.replace("?3", databaseName);
+
+				FileManager.replaceTextInFile(resourcesPath + "\\application.properties", "[driver]", driver);
+				FileManager.replaceTextInFile(resourcesPath + "\\application.properties", "[url]", url);
+				FileManager.replaceTextInFile(resourcesPath + "\\application.properties", "[username]",
+						jdbcManager.getUsername());
+
+				FileManager.replaceTextInFile(resourcesPath + "\\application.properties", "[password]",
+						jdbcManager.getPassword());
+
+				FileManager.replaceTextInFile(resourcesPath + "\\application.properties", "[dialect]",
+						PropertiesReading.getProperty(jdbcManager.getServer() + ".dialect"));
+
+				setProcessProgress(92);
+				FileManager.replaceTextInFile(resourcesPath + "\\application.properties", "[packageName]", packageName);
+				printLog("application.properties configurado.");
+				if (this.architecture.equals("hexagonal")) {
+					printLog("Configurando Autenticación...");
+					packageNameController = this.packageName + ".infrastructure.adapters.input.rest.security";
+					packageNameDTO = this.packageName + ".infrastructure.adapters.input.dto.security";
+					packageNameSevice = this.packageName + ".application.ports.input.security";
+					packageNameServiceImpl = this.packageName + ".application.usecases.security";
+					FileManager.copyDir(
+							PropertiesReading.folder_codegenerator_util
+									+ (this.architecture.equals("hexagonal") ? "//hexagonal//backend" : "")
+									+ "/auth/AuthController.java",
+							packagePath + "\\" + packageNameController.replace(".", "\\") + "\\AuthController.java",
+							false);
+					setProcessProgress(93);
+
+					FileManager.replaceTextInFile(
+							packagePath + "\\" + packageNameController.replace(".", "\\") + "\\AuthController.java",
+							"[packageName]", packageName);
+
+					FileManager.copyDir(
+							PropertiesReading.folder_codegenerator_util
+									+ (this.architecture.equals("hexagonal") ? "//hexagonal//backend" : "")
+									+ "/auth/AuthService.java",
+							packagePath + "\\" + packageNameSevice.replace(".", "\\") + "\\AuthService.java", false);
+
+					FileManager.replaceTextInFile(
+							packagePath + "\\" + packageNameSevice.replace(".", "\\") + "\\AuthService.java",
+							"[packageName]", packageName);
+
+					setProcessProgress(94);
+					FileManager.copyDir(
+							PropertiesReading.folder_codegenerator_util
+									+ (this.architecture.equals("hexagonal") ? "//hexagonal//backend" : "")
+									+ "/auth/AuthServiceImpl.java",
+							packagePath + "\\" + packageNameServiceImpl.replace(".", "\\") + "\\AuthServiceImpl.java",
+							false);
+
+					FileManager.replaceTextInFile(
+							packagePath + "\\" + packageNameServiceImpl.replace(".", "\\") + "\\AuthServiceImpl.java",
+							"[packageName]", packageName);
+
+					setProcessProgress(95);
+					FileManager.copyDir(
+							PropertiesReading.folder_codegenerator_util
+									+ (this.architecture.equals("hexagonal") ? "//hexagonal//backend" : "")
+									+ "/auth/AuthDTO.java",
+							packagePath + "\\" + packageNameDTO.replace(".", "\\") + "\\AuthDTO.java", false);
+
+					FileManager.replaceTextInFile(
+							packagePath + "\\" + packageNameDTO.replace(".", "\\") + "\\AuthDTO.java", "[packageName]",
+							packageName);
+
+					setProcessProgress(96);
+					FileManager.copyDir(
+							PropertiesReading.folder_codegenerator_util
+									+ (this.architecture.equals("hexagonal") ? "//hexagonal//backend" : "")
+									+ "/auth/UserDetailsServiceImpl.java",
+							packagePath + "\\" + packageNameServiceImpl.replace(".", "\\")
+									+ "\\UserDetailsServiceImpl.java",
+							false);
+
+					FileManager.replaceTextInFile(packagePath + "\\" + packageNameServiceImpl.replace(".", "\\")
+							+ "\\UserDetailsServiceImpl.java", "[packageName]", packageName);
+
+					printLog("Autenticación configurada.");
+				}
+			}
+			setProcessProgress(99);
+
+		} catch (Exception e) {
+			setProcessProgress(100);
+			e.printStackTrace();
+			return false;
+		}
+		printLog("Proceso finalizado!!!");
+		setProcessProgress(100);
+
+		return true;
+	}
+
+	private String getDataTypeJava(String server, String dataType) {
+		String dataTypeJava = "";
+		if (server.equals("mysql")) {
+			dataTypeJava = DataTypeConverter.mysqlToJava.get(dataType);
+		} else {
+			dataTypeJava = DataTypeConverter.sqlserverToJava.get(dataType);
+		}
+		return dataTypeJava;
+	}
+
+	private String capitalizeText(String text) {
+		text = text.toLowerCase().substring(0, 1).toUpperCase() + text.toLowerCase().substring(1, text.length());
+		return text;
+	}
+
+	private String formatText(String text, boolean capitalize) {
+		String[] data = text.split("_");
+		if (data.length > 1) {
+			String aux = (capitalize ? data[0].substring(0, 1).toUpperCase() : data[0].substring(0, 1).toLowerCase())
+					+ data[0].substring(1, data[0].length());
+			for (int i = 1; i < data.length; i++) {
+				aux += data[i].substring(0, 1).toUpperCase() + data[i].substring(1, data[i].length());
+			}
+
+			text = aux;
+		} else {
+
+			text = (capitalize ? text.substring(0, 1).toUpperCase() : text.substring(0, 1).toLowerCase())
+					+ text.substring(1, text.length());
+		}
+
+		return text;
+	}
+
+	private boolean generateEntity(String packageNameEntity, Table table, boolean override) {
+		try {
+			String tableSchema = table.getSchema();
+			String tableName = table.getName();
+			List<Column> columns = table.getColumns();
+			List<Column> col = columns.stream().filter(x -> x.getIsPrimaryKey()).collect(Collectors.toList());
+
+			if (col.size() == 1) {
+				String pathModel = packagePath + "\\" + packageNameEntity.replace(".", "\\") + "\\"
+						+ formatText(tableName, true) // capitalizeText(tableName)
+						+ "Entity.java";
+
+				File f = new File(pathModel);
+
+				if (f.exists() && !override) {
+					printLog("_______________________________");
+					return true;
+				} else if (columns == null)
+					columns = jdbcManager.getColumnsByTable(databaseName, tableName);
+
+				if (override)
+					f.delete();
+
+				f.createNewFile();
+
+				Writer w = new OutputStreamWriter(new FileOutputStream(f));
+				w.append("package " + packageNameEntity + ";\n\n");
+
+				w.append("import " + (this.architecture.equals("hexagonal") ? "jakarta" : "javax")
+						+ ".persistence.*;\n");
+
+				List<Column> cols = columns.stream().filter(c -> c.getIsForeigKey()).collect(Collectors.toList());
+
+				if (cols.size() > 0) {
+					Optional<Object[]> fk = tables.stream().filter(tbl -> tbl[1].equals(tableName)).findFirst();
+					String sfkCurrent = fk.get()[0].toString().toLowerCase();
+
+//					if (this.architecture.equals("hexagonal")) {
+//						w.append("import " + this.packageName + ".infrastructure.adapters.input.dto." + sfkCurrent + "."
+//								+ formatText(tableName, true) + "DTO;\n");
+//						w.append("import " + this.packageName + ".util.MapperMapping;\n\n");
+//					}
+
+					for (Iterator iterator = cols.iterator(); iterator.hasNext();) {
+						Column colu = (Column) iterator.next();
+
+						fk = tables.stream().filter(tbl -> tbl[1].equals(colu.getTableReference())).findFirst();
+						String sfk = fk.get()[0].toString().toLowerCase();
+
+						if (!sfkCurrent.equals(sfk)) {
+							if (this.architecture.equals("hexagonal"))
+								w.append("import " + this.packageName
+										+ ".infrastructure.adapters.output.persistence.entity." + sfk + "."
+										+ formatText(colu.getTableReference(), true) + "Entity;\n");
+							else
+								w.append("import " + this.packageName + ".model." + sfk + "."
+										+ formatText(colu.getTableReference(), true) + "Entity;\n");
+						}
+					}
+				}			
+				
+				List<ForeignKeyReferences> fkRef = table.getTableReferences();
+				
+				if (fkRef != null && !fkRef.isEmpty()) 
+					System.out.println();
+				
+				if (fkRef != null && !fkRef.isEmpty()) {
+					w.append("import java.util.List;\n\n");
+					for (ForeignKeyReferences foreignKeyReferences : fkRef) {
+						w.append("import " 
+								+ this.packageName
+								+ ".infrastructure.adapters.output.persistence.entity." + formatText(foreignKeyReferences.getDependentSchema(), false)+ "."
+								+ formatText(foreignKeyReferences.getDependentTable(), true) + "Entity;\n");
+					}
+				}
+
+				w.append("import lombok.AllArgsConstructor;\n");
+				w.append("import lombok.Getter;\n");
+				w.append("import lombok.Setter;\n");
+
+				w.append("/**\r\n" + " * \r\n" + " * @author José Rene Balderravano Hernández\r\n" + " * @since "
+						+ getDateTime() + "\n */\n");
+				w.append("@Getter\n");
+				w.append("@Setter\n");
+				w.append("@AllArgsConstructor\n");
+				w.append("@Entity\n");
+
+				if (this.server.equals("sqlserver"))
+					w.append("@Table(name = \"[" + tableName + "]\" "
+							+ (tableSchema.equals("") ? "" : ", schema=\"" + tableSchema + "\"") + ")\n");
+				else
+					w.append("@Table(name = \"" + tableName + "\")\n");
+
+				w.append("public class " + formatText(tableName, true) + "Entity { \n\n");
+
+				// Add properties
+				for (Column column : columns) {
+					if (!column.getIsForeigKey()) {
+						if (column.getIsPrimaryKey()) {
+							w.append("\t@Id\n");
+							w.append("\t@GeneratedValue(strategy= GenerationType.IDENTITY)\n");
+						}
+
+						if (column.getDataType().equals("varbinary") || column.getDataType().equals("text"))
+							w.append("\t@Lob\n");
+
+						String len = "";
+						if ((column.getDataType().equals("char") || column.getDataType().equals("varchar")
+								|| column.getDataType().equals("nvarchar")) && column.getLength() != -1)
+							len = ", length = " + column.getLength() + " ";
+
+						String scalPre = "";
+						if ((column.getDataType().equals("decimal") || column.getDataType().equals("numeric"))
+								&& column.getLength() != -1)
+							scalPre = ", precision = " + column.getNumericPrecision() + ", scale = "
+									+ column.getNumericScale() + " ";
+
+						String strUnique = "";
+						if ((column.getIsUnique()))
+							strUnique = ", unique = " + column.getIsUnique() + " ";
+
+						w.append("\t@Column(name = \"" + column.getName() + "\"" + strUnique + len + scalPre + ")\n");
+						w.append("\tprivate " + getDataTypeJava(this.server, column.getDataType()) + " "
+								+ formatText(column.getName(), false) + ";\n\n");
+					} else {
+						String fkName = "";
+						if (column.getName().startsWith("id"))
+							fkName = column.getName().substring(2);
+						else if (column.getName().endsWith("_id") || column.getName().endsWith("Id"))
+							fkName = column.getName().replace("_id", "").replace("Id", "");
+
+						if (fkName.equals(""))
+							fkName = column.getName();
+
+						String foreignKeyColumn = formatText(fkName, true);
+						w.append("\t@ManyToOne\n");
+						w.append("\t@JoinColumn(name = \"" + column.getName() + "\")\n");
+						w.append("\tprivate " + formatText(column.getTableReference(), true) + "Entity" + " "
+								+ formatText(fkName, false) + ";\n\n");
+					}
+				}
+
+				if (fkRef != null && !fkRef.isEmpty()) {
+					
+					for (ForeignKeyReferences foreignKeyReferences : fkRef) {
+						String foreignKeyColumn = formatText(foreignKeyReferences.getDependentTable(), true)+ "Entity";
+						w.append("\t@OneToMany(mappedBy = \"" + foreignKeyReferences.getDependentColumn()+ "\")\n");
+						w.append("\tprivate List<" + formatText(foreignKeyColumn, true) + ">" + " "
+								+ formatText(foreignKeyColumn, false) + ";\n\n");
+						
+					}
+				}
+
+				// Add constructor
+				w.append("\tpublic " + formatText(tableName, true) + "Entity() {\n");
+				w.append("\t}\n\n");
+
+				w.append("}");
+
+				w.close();
+
+			}
+			else {
+
+//				CREAR PRIMARY KEY EMBEDDED
+				createPrimaryKeyEmbedded(packageNameEntity, table, override);
+
+//				CREAR ENTITY
+				createRelationshipManyToMany(packageNameEntity, table, override);
+
+			}
+
+		} catch (IOException e) {
+			e.printStackTrace();
+			return false;
+		}
+
+		return true;
+	}
+
+	private boolean createPrimaryKeyEmbedded(String packageNameEntity, Table table, boolean override) {
+
+		try {
+			String tableSchema = table.getSchema();
+			String tableName = table.getName();
+
+			String pathModel = packagePath + "\\" + packageNameEntity.replace(".", "\\") + "\\"
+					+ formatText(tableName, true) // capitalizeText(tableName)
+					+ "Id.java";
+
+			File f = new File(pathModel);
+
+			if (f.exists() && !override) {
+				printLog("_______________________________");
+				return true;
+			}
+
+			if (override)
+				f.delete();
+
+			f.createNewFile();
+
+			try (Writer w = new OutputStreamWriter(new FileOutputStream(f))) {
+				w.append("package " + packageNameEntity + ";\n\n");
+				w.append("import " + (this.architecture.equals("hexagonal") ? "jakarta" : "javax")
+						+ ".persistence.*;\n");
+				w.append("import java.io.Serializable;\n");
+				w.append("import java.util.Objects;\n");
+				w.append("@Embeddable\n");
+				w.append("public class " + formatText(tableName, true) + "Id implements Serializable {\n\n");
+				w.append("\tprivate static final long serialVersionUID = 1L;\n");
+				List<Column> col = table.getColumns().stream().filter(x -> x.getIsPrimaryKey())
+						.collect(Collectors.toList());
+				for (Column column : col) {
+					w.append("\tprivate " + getDataTypeJava(this.server, column.getDataType()) + " "
+							+ formatText(column.getName(), false) + ";\n\n");
+				}
+
+				// Constructor vacío
+				w.append("\tpublic " + formatText(tableName, true) + "Id() {\n}\n\n");
+				w.append("\tpublic " + formatText(tableName, true) + "Id(");
+				int i = 0;
+				for (Column column : col) {
+					w.append("\t\t" + getDataTypeJava(this.server, column.getDataType()) + " "
+							+ formatText(column.getName(), false) + (i == col.size() - 1 ? "" : ",") + " \n");
+					i++;
+				}
+				w.append("\t){\n");
+				for (Column column : col) {
+					w.append("\t\tthis." + formatText(column.getName(), false) + " = "
+							+ formatText(column.getName(), false) + ";\n");
+				}
+				w.append("\t}\n");
+
+				// getters/setters
+				for (Column column : col) {
+					w.append("\tpublic " + getDataTypeJava(this.server, column.getDataType()) + " get"
+							+ formatText(column.getName(), true) + "(){\n");
+					w.append("\t\treturn " + formatText(column.getName(), false) + ";\n");
+					w.append("\t}\n\n");
+
+					w.append("\tpublic void set" + formatText(column.getName().toLowerCase(), true) + "("
+							+ getDataTypeJava(this.server, column.getDataType()) + " "
+							+ formatText(column.getName(), false) + "\t){\n");
+					w.append("\t\tthis." + formatText(column.getName(), false) + " = "
+							+ formatText(column.getName(), false) + ";\n");
+					w.append("\t}\n\n");
+				}
+
+				w.append("\t@Override\n");
+				w.append("\tpublic boolean equals(Object o) {\n");
+				w.append("\t\tif(this == o) return true;\n");
+				w.append("\t\t\tif( !(o instanceof " + formatText(tableName, true) + "Id)) return false;\n");
+				w.append(" \t\t\t\t" + formatText(tableName, true) + "Id that = (" + formatText(tableName, true)
+						+ "Id) o;\n");
+				w.append("\t\treturn ");
+				i = 0;
+				for (Column column : col) {
+					w.append("\t\t\tObjects.equals(" + formatText(column.getName(), false) + ", that."
+							+ formatText(column.getName(), false) + ")\n");
+					w.append(i == col.size() - 1 ? "\t\t\t;\n" : "&&");
+					i++;
+				}
+				w.append("\t}\n");
+
+				w.append("\t\t@Override\n");
+				w.append("\t\tpublic int hashCode() {\n");
+
+				w.append("\t\t\treturn \n");
+
+				w.append("\t\t\tObjects.hash(");
+				i = 0;
+				for (Column column : col) {
+					w.append(formatText(column.getName(), false));
+					w.append(i == col.size() - 1 ? "\t\t\t);\n" : ",");
+					i++;
+				}
+				w.append("\n\t\t}\n");
+//		
+				w.append("}\n");
+			}
+
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+
+			return false;
+		}
+
+		return true;
+	}
+
+	private boolean createRelationshipManyToMany(String packageNameEntity, Table table, boolean override) {
+
+		try {
+			String tableSchema = table.getSchema();
+			String tableName = table.getName();
+
+			String pathModel = packagePath + "\\" + packageNameEntity.replace(".", "\\") + "\\"
+					+ formatText(tableName, true) // capitalizeText(tableName)
+					+ "Entity.java";
+
+			File f = new File(pathModel);
+
+			if (f.exists() && !override) {
+				printLog("_______________________________");
+				return true;
+			}
+
+			if (override)
+				f.delete();
+
+			f.createNewFile();
+
+			try (Writer w = new OutputStreamWriter(new FileOutputStream(f))) {
+				w.append("package " + packageNameEntity + ";\n\n");
+
+				w.append("import " + (this.architecture.equals("hexagonal") ? "jakarta" : "javax")
+						+ ".persistence.*;\n");
+
+				Optional<Object[]> fk = tables.stream().filter(tbl -> tbl[1].equals(tableName)).findFirst();
+				String sfkCurrent = fk.get()[0].toString().toLowerCase();
+
+				List<Column> cols = table.getColumns().stream().filter(c -> c.getIsForeigKey())
+						.collect(Collectors.toList());
+
+				for (Iterator iterator = cols.iterator(); iterator.hasNext();) {
+					Column colu = (Column) iterator.next();
+
+					fk = tables.stream().filter(tbl -> tbl[1].equals(colu.getTableReference())).findFirst();
+					String sfk = fk.get()[0].toString().toLowerCase();
+
+					if (!sfkCurrent.equals(sfk)) {
+
+						if (this.architecture.equals("hexagonal"))
+							w.append(
+									"import " + this.packageName + ".infrastructure.adapters.output.persistence.entity."
+											+ sfk + "." + formatText(colu.getTableReference(), true) + "Entity;\n");
+						else
+							w.append("import " + this.packageName + ".model." + sfk + "."
+									+ formatText(colu.getTableReference(), true) + "Entity;\n");
+					}
+				}
+				w.append("/**\r\n" + " * \r\n" + " * @author José Rene Balderravano Hernández\r\n" + " * @since "
+						+ getDateTime() + "\n" + " */\n");
+				w.append("@Entity\n");
+
+				if (this.server.equals("sqlserver"))
+					w.append("@Table(name = \"[" + tableName + "]\" "
+							+ (tableSchema.equals("") ? "" : ", schema=\"" + tableSchema + "\"") + ")\n");
+				else
+					w.append("@Table(name = \"" + tableName + "\")\n");
+
+				w.append("public class " + formatText(tableName, true) + "Entity{\n\n");
+				w.append("\t@EmbeddedId\n");
+				w.append("\tprivate " + formatText(tableName, true) + "Id " + "id;\n\n");
+
+				List<Column> col = table.getColumns().stream().filter(x -> !x.getIsPrimaryKey())
+						.collect(Collectors.toList());
+				for (Column column : col) {
+					if (!column.getIsForeigKey()) {
+						if (column.getDataType().equals("varbinary"))
+							w.append("\t@Lob\n");
+
+						String len = "";
+						if ((column.getDataType().equals("char") || column.getDataType().equals("varchar")
+								|| column.getDataType().equals("nvarchar")) && column.getLength() != -1)
+							len = ", length = " + column.getLength() + " ";
+
+						String scalPre = "";
+						if ((column.getDataType().equals("decimal") || column.getDataType().equals("numeric"))
+								&& column.getLength() != -1)
+							scalPre = ", precision = " + column.getNumericPrecision() + ", scale = "
+									+ column.getNumericScale() + " ";
+
+						String strUnique = "";
+						if ((column.getIsUnique()))
+							strUnique = ", unique = " + column.getIsUnique() + " ";
+
+						w.append("\t@Column(name = \"" + column.getName() + "\"" + strUnique + len + scalPre + ")\n");
+						w.append("\tprivate " + getDataTypeJava(this.server, column.getDataType()) + " "
+								+ formatText(column.getName(), false) + ";\n\n");
+					} else {
+						String fkName = "";
+						if (column.getName().startsWith("id"))
+							fkName = column.getName().substring(2);
+						else if (column.getName().endsWith("_id") || column.getName().endsWith("Id"))
+							fkName = column.getName().replace("_id", "").replace("Id", "");
+
+						if (fkName.equals(""))
+							fkName = column.getName();
+
+						String foreignKeyColumn = formatText(fkName, true);
+						w.append("\t@ManyToOne\n");
+						w.append("\t@MapsId(\"" + column.getName() + "\")\n");
+						w.append("\t@JoinColumn(name = \"" + column.getName() + "\")\n");
+						if (this.architecture.equals("hexagonal"))
+							w.append("\t@MapperMapping(srcClass = " + formatText(tableName, true)
+									+ "DTO.class, srcFieldName = \"" + column.getName() + "\")\n");
+						w.append("\tprivate " + formatText(column.getTableReference(), true) + "Entity" + " "
+								+ formatText(fkName, false) + ";\n\n");
+					}
+				}
+
+				// Constructor vacío
+				w.append("\tpublic " + formatText(tableName, true) + "Entity() {\n}\n\n");
+
+				w.append(
+						"\tpublic " + formatText(tableName, true) + "Id get" + formatText(tableName, true) + "Id(){\n");
+				w.append("\t\treturn id;\n");
+				w.append("\t}\n\n");
+
+				w.append("\tpublic void set" + formatText(tableName, true) + "Id(" + formatText(tableName, true) + "Id "
+						+ formatText(tableName, false) + "Id){\n");
+				w.append("\t\tthis.id = " + formatText(tableName, false) + "Id;\n");
+				w.append("\t}\n\n");
+
+				// getters/setters
+				for (Column column : col) {
+					if (!column.getIsForeigKey()) {
+						w.append("\tpublic " + getDataTypeJava(this.server, column.getDataType()) + " get"
+								+ formatText(column.getName(), true) + "(){\n");
+						w.append("\t\treturn " + formatText(column.getName(), false) + ";\n");
+						w.append("\t}\n\n");
+
+						w.append("\tpublic void set" + formatText(column.getName().toLowerCase(), true) + "("
+								+ getDataTypeJava(this.server, column.getDataType()) + " "
+								+ formatText(column.getName(), false) + "){\n");
+						w.append("\t\tthis." + formatText(column.getName(), false) + " = "
+								+ formatText(column.getName(), false) + ";\n");
+						w.append("\t}\n\n");
+					} else {
+						String fkName = "";
+						if (column.getName().startsWith("id"))
+							fkName = column.getName().substring(2);
+						else if (column.getName().endsWith("_id") || column.getName().endsWith("Id"))
+							fkName = column.getName().replace("_id", "").replace("Id", "");
+
+						if (fkName.equals(""))
+							fkName = column.getName();
+
+						String foreignKeyColumn = formatText(fkName, true);
+						w.append("\tpublic " + formatText(column.getTableReference(), true) + "Entity" + " get"
+								+ foreignKeyColumn + "(){\n");
+						w.append("\t\treturn " + formatText(fkName, false) + ";\n");
+						w.append("\t}\n\n");
+
+						w.append("\tpublic void set" + foreignKeyColumn + "("
+								+ formatText(column.getTableReference(), true) + "Entity" + " "
+								+ formatText(fkName, false) + "){\n");
+						w.append("\t\tthis." + formatText(fkName, false) + " = " + formatText(fkName, false) + ";\n");
+						w.append("\t}\n\n");
+					}
+				}
+
+//		
+				w.append("}\n");
+			}
+
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+
+			return false;
+		}
+
+		return true;
+	}
+
+	private boolean generateModel(String packageNameModel, Table table, boolean override) {
+		try {
+
+			String tableSchema = table.getSchema();
+			String tableName = table.getName();
+			List<Column> columns = table.getColumns();
+			String pathModel = packagePath + "\\" + packageNameModel.replace(".", "\\") + "\\"
+					+ formatText(tableName, true) // capitalizeText(tableName)
+					+ ".java";
+			File f = new File(pathModel);
+
+			if (f.exists() && !override) {
+				printLog("_______________________________");
+				return true;
+			} else if (columns == null)
+				columns = jdbcManager.getColumnsByTable(databaseName, tableName);
+
+			if (override)
+				f.delete();
+
+			f.createNewFile();
+			Writer w = new OutputStreamWriter(new FileOutputStream(f));
+
+			w.append("package " + packageNameModel + ";\n\n");
+
+			List<Column> cols = columns.stream().filter(c -> c.getIsForeigKey()).collect(Collectors.toList());
+
+			if (cols.size() > 0) {
+				Optional<Object[]> fk = tables.stream().filter(tbl -> tbl[1].equals(tableName)).findFirst();
+				String sfk = fk.get()[0].toString().toLowerCase();
+				w.append("import " + this.packageName + ".util.MapperMapping;\n\n");
+			}
+			w.append("import lombok.AllArgsConstructor;\n");
+			w.append("import lombok.Getter;\n");
+			w.append("import lombok.Setter;\n\n");
+
+			w.append("/**\r\n" + " * \r\n" + " * @author José Rene Balderravano Hernández\r\n" + " * @since "
+					+ getDateTime() + " */\n");
+			w.append("@Getter\n");
+			w.append("@Setter\n");
+			w.append("@AllArgsConstructor\n");
+			w.append("public class " + formatText(tableName, true) + " { \n\n");
+
+			List<Column> col = columns.stream().filter(x -> x.getIsPrimaryKey()).collect(Collectors.toList());
+
+			if (col.size() == 1) {
+
+				// Add properties
+				for (Column column : columns) {
+					if (column.getIsForeigKey()) {
+						String fkName = "";
+						if (column.getName().startsWith("id"))
+							fkName = column.getName().substring(2);
+						else if (column.getName().endsWith("_id") || column.getName().endsWith("Id"))
+							fkName = column.getName().replace("_id", "").replace("Id", "");
+
+						if (fkName.equals(""))
+							fkName = column.getName();
+
+						String foreignKeyColumn = formatText(fkName, false) + "";
+
+						w.append("\t@MapperMapping(name = \"" + formatText(fkName, false) + ".name\")\n");
+						w.append("\tprivate String " + foreignKeyColumn + "Name;\n\n");
+
+						w.append("\t@MapperMapping(name = \"" + formatText(fkName, false) + ".id\")\n");
+					}
+
+					w.append("\tprivate " + getDataTypeJava(this.server, column.getDataType()) + " "
+							+ formatText(column.getName(), false) + ";\n\n");
+				}
+			} else {
+
+//				List<Column> cols1 = columns.stream().filter(x -> !x.getIsPrimaryKey() ).collect(Collectors.toList());
+
+				for (Column column : columns) {
+					if (column.getIsForeigKey()) {
+						String fkName = "";
+						if (column.getName().startsWith("id"))
+							fkName = column.getName().substring(2);
+						else if (column.getName().endsWith("_id") || column.getName().endsWith("Id"))
+							fkName = column.getName().replace("_id", "").replace("Id", "");
+
+						if (fkName.equals(""))
+							fkName = column.getName();
+
+						String foreignKeyColumn = formatText(fkName, true) + "";
+						w.append("\t@MapperMapping(name = \"" + formatText(fkName, false) + ".name\")\n");
+						w.append("\tprivate String " + formatText(fkName, false) + "Name;\n\n");
+
+						w.append("\t@MapperMapping(name = \"" + formatText(fkName, false) + ".id\")\n");
+					}
+
+					w.append("\tprivate " + getDataTypeJava(this.server, column.getDataType()) + " "
+							+ formatText(column.getName(), false) + ";\n\n");
+				}
+			}
+
+			w.append("\tpublic " + formatText(tableName, true) + "(){\n");
+			w.append("\t}\n\n");
+
+			w.append("}");
+
+			w.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+
+			return false;
+		}
+
+		return true;
+	}
+
+	private boolean generateDTO(String packageNameDTO, Table table, boolean override) {
+		try {
+
+			String tableSchema = table.getSchema();
+			String tableName = table.getName();
+			List<Column> columns = table.getColumns();
+
+			String pathModel = packagePath + "\\" + packageNameDTO.replace(".", "\\") + "\\"
+					+ formatText(tableName, true) // capitalizeText(tableName)
+					+ "DTO.java";
+			File f = new File(pathModel);
+
+			if (f.exists() && !override) {
+				printLog("_______________________________");
+				return true;
+			} else if (columns == null)
+				columns = jdbcManager.getColumnsByTable(databaseName, tableName);
+
+			if (override)
+				f.delete();
+
+			List<Column> col = columns.stream().filter(x -> x.getIsPrimaryKey()).collect(Collectors.toList());
+//			if (col.size() == 1) {
+
+				f.createNewFile();
+				Writer w = new OutputStreamWriter(new FileOutputStream(f));
+
+				w.append("package " + packageNameDTO + ";\n\n");
+
+				w.append("import lombok.Getter;\n");
+				w.append("import lombok.Setter;\n");
+
+				w.append("/**\r\n" + " * \r\n" + " * @author José Rene Balderravano Hernández\r\n" + " * @since "
+						+ getDateTime() + " */\n");
+				w.append("@Getter\n");
+				w.append("@Setter\n");
+				w.append("public class " + formatText(tableName, true) + "DTO { \n\n");
+
+				// Add properties
+				for (Column column : columns) {
+
+					if (column.getIsForeigKey()) {
+						String fkName = "";
+						if (column.getName().startsWith("id"))
+							fkName = column.getName().substring(2);
+						else if (column.getName().endsWith("_id") || column.getName().endsWith("Id"))
+							fkName = column.getName().replace("_id", "").replace("Id", "");
+
+						if (fkName.equals(""))
+							fkName = column.getName();
+
+						String foreignKeyColumn = formatText(fkName, true) + "";
+						w.append("\tprivate String " + formatText(fkName, false) + "Name;\n\n");
+					}
+
+					w.append("\tprivate " + getDataTypeJava(this.server, column.getDataType()) + " "
+							+ formatText(column.getName(), false) + ";\n\n");
+				}
+
+//			} 
+//			else {
+//				List<Column> cols = columns.stream().filter(x -> !x.getIsPrimaryKey()).collect(Collectors.toList());
+//				// Add properties
+//				for (Column column : cols) {
+//
+//					w.append("\tprivate " + getDataTypeJava(this.server, column.getDataType()) + " "
+//							+ formatText(column.getName(), false) + ";\n\n");
+//				}
+//
+//			}
+
+				// Add constructor
+
+				w.append("\tpublic " + formatText(tableName, true) + "DTO (){\n");
+				w.append("\t}\n\n");
+
+				w.append("}");
+
+				w.close();
+
+//			}
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+
+			return false;
+		}
+
+		return true;
+	}
+
+	private boolean generateDAO(String packageNameEntity, String packageNameDAO, Table table) {
+		try {
+			String tableName = table.getName();
+			String pathModel = packagePath + "\\" + packageNameDAO.replace(".", "\\") + "\\"
+					+ formatText(tableName, true) + "DAO.java";
+			File f = new File(pathModel);
+			f.createNewFile();
+			Writer w = new OutputStreamWriter(new FileOutputStream(f));
+
+			w.append("package " + packageNameDAO + ";\n\n");
+			w.append("import " + packageName + ".util.IBase;\n\n");
+			if (tableName.equalsIgnoreCase("Usuario") || tableName.equalsIgnoreCase("User"))
+				w.append("import " + packageNameEntity + "." + formatText(tableName, true) + "Entity;\n");
+
+			if (this.architecture.equals("mvc")) {
+				w.append("import " + this.packageName + ".model." + table.getSchema() + "."
+						+ formatText(tableName, true) + "Entity;\n");
+			} else {
+				w.append("import " + packageNameEntity + "." + formatText(tableName, true) + "Entity;\n");
+			}
+			w.append("import org.springframework.data.jpa.repository.JpaRepository;");
+
+			Column column = table.getColumns().stream().filter(c -> c.getIsPrimaryKey()).findFirst().get();
+			w.append("/**\r\n" + " * \r\n" + " * @author José Rene Balderravano Hernández\r\n" + " * @since "
+					+ getDateTime() + " \n*/\n");
+			w.append("public interface " + formatText(tableName, true) + "DAO extends JpaRepository"
+					+ ("<" + formatText(tableName, true) + "Entity, "
+							+ getDataTypeJava(this.server, column.getDataType()) + ">")
+					+ " { \n\n");
+
+			if (tableName.equalsIgnoreCase("Usuario") || tableName.equalsIgnoreCase("User")) {
+				w.append("\tpublic " + tableName + "Entity findByUserName(String userName);");
+			}
+
+			w.append("}");
+			w.close();
+
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			return false;
+		}
+
+		return true;
+	}
+
+	private boolean generateRepository(String packageNameModel, String packageNameRepository, Table table) {
+		try {
+			String tableName = table.getName();
+			String pathModel = packagePath + "\\" + packageNameRepository.replace(".", "\\") + "\\"
+					+ formatText(tableName, true) + "Repository.java";
+			File f = new File(pathModel);
+			f.createNewFile();
+			Writer w = new OutputStreamWriter(new FileOutputStream(f));
+
+			w.append("package " + packageNameRepository + ";\n\n");
+			w.append("import " + packageName + ".util.IBaseRepository;\n\n");
+
+			if (tableName.equalsIgnoreCase("Usuario") || tableName.equalsIgnoreCase("User"))
+				w.append("import " + packageNameModel + "." + formatText(tableName, true) + ";\n");
+
+			w.append("import " + packageNameModel + "." + formatText(tableName, true) + ";\n");
+
+			w.append("/**\n");
+			w.append(" *\n");
+			w.append(" * @author José Rene Balderravano Hernández\n");
+			w.append(" * @since " + getDateTime() + "\n");
+			w.append(" */\n");
+
+			Column column = table.getColumns().stream().filter(c -> c.getIsPrimaryKey()).findFirst().get();
+			w.append("public interface " + formatText(tableName, true) + "Repository extends IBaseRepository" + ("<"
+					+ formatText(tableName, true) + ", " + getDataTypeJava(this.server, column.getDataType()) + ">")
+					+ " { \n\n");
+
+			if (tableName.equalsIgnoreCase("Usuario") || tableName.equalsIgnoreCase("User")) {
+				w.append("\tpublic " + tableName + " findByUserName(String userName);\n");
+			}
+
+			w.append("}");
+			w.close();
+
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			return false;
+		}
+
+		return true;
+	}
+
+	private boolean generateRepositoryImpl(String packageNameModel, String packageNameEntity, String packageNameDAO,
+			String packageNameRepositoryImpl, String packageNameRepository, Table table) {
+		try {
+			String tableName = table.getName();
+			String pathModel = packagePath + "\\" + packageNameRepositoryImpl.replace(".", "\\") + "\\"
+					+ formatText(tableName, true) + "RepositoryImpl.java";
+			File f = new File(pathModel);
+			f.createNewFile();
+			Writer w = new OutputStreamWriter(new FileOutputStream(f));
+
+			w.append("package " + packageNameRepositoryImpl + ";\n\n");
+
+			w.append("import org.springframework.stereotype.Repository;\n");
+
+			w.append("import " + packageNameDAO + "." + formatText(tableName, true) + "DAO;\n");
+			w.append("import " + packageName + ".util.BaseRepository;\n\n");
+
+			if (this.architecture.equals("mvc"))
+				w.append("import " + this.packageName + ".model." + table.getSchema() + "."
+						+ formatText(tableName, true) + "Entity;\n");
+			else {
+				w.append("import " + packageNameEntity + "." + formatText(tableName, true) + "Entity;\n");
+				w.append("import " + packageNameModel + "." + formatText(tableName, true) + ";\n");
+				w.append("import " + packageNameRepository + "." + formatText(tableName, true) + "Repository;\n");
+			}
+
+			if (tableName.equalsIgnoreCase("Usuario") || tableName.equalsIgnoreCase("User")) {
+				w.append("import java.util.ArrayList;\n" + "import java.util.List;\n"
+						+ "import org.hibernate.Session;\n" + "import com.digiret.util.MapperUtil;\n" + "import "
+						+ (this.architecture.equals("mvc") ? "javax" : "jakarta") + ".persistence.EntityManager;\n"
+						+ "import " + (this.architecture.equals("mvc") ? "javax" : "jakarta")
+						+ ".persistence.criteria.CriteriaBuilder;\n" + "import "
+						+ (this.architecture.equals("mvc") ? "javax" : "jakarta")
+						+ ".persistence.criteria.CriteriaQuery;\n" + "import "
+						+ (this.architecture.equals("mvc") ? "javax" : "jakarta") + ".persistence.criteria.Predicate;\n"
+						+ "import " + (this.architecture.equals("mvc") ? "javax" : "jakarta")
+						+ ".persistence.criteria.Root;\n");
+			}
+
+			Column column = table.getColumns().stream().filter(c -> c.getIsPrimaryKey()).findFirst().get();
+
+			w.append("/** \n" + " * \n" + " * @author José Rene Balderravano Hernández\n" + " * @since " + getDateTime()
+					+ "\n */\n");
+			w.append("@Repository\n");
+			w.append("public class " + formatText(tableName, true) + "RepositoryImpl extends BaseRepository<"
+					+ formatText(tableName, true) + ", " + formatText(tableName, true) + "Entity,"
+					+ getDataTypeJava(this.server, column.getDataType()) + "> implements " + formatText(tableName, true)
+					+ "Repository { \n\n");
+
+			w.append("\tprivate " + formatText(tableName, true) + "DAO " + formatText(tableName, false) + "DAO; \n");
+
+			w.append("\tpublic " + formatText(tableName, true) + "RepositoryImpl(" + formatText(tableName, true)
+					+ "DAO " + formatText(tableName, false) + "DAO" + "){\n");
+			w.append(
+					"\t\t this." + formatText(tableName, false) + "DAO  = " + formatText(tableName, false) + "DAO; \n");
+			w.append("\t\t super.setJpaRepository(" + formatText(tableName, false) + "DAO); \n");
+			w.append("\t}\n\n\n");
+
+			if (tableName.equalsIgnoreCase("Usuario") || tableName.equalsIgnoreCase("User"))
+				w.append("	@Override\r\n" + "	public User findByUserName(String userName) {\r\n"
+						+ "		EntityManager em = super.getEm();\r\n"
+						+ "		CriteriaBuilder cb = em.getCriteriaBuilder();\r\n"
+						+ "		CriteriaQuery<UserEntity> q = cb.createQuery(UserEntity.class);\r\n"
+						+ "		Root<UserEntity> root = q.from(UserEntity.class);		\r\n"
+						+ "	    List<Predicate> predicates = new ArrayList<>();\r\n" + "	    \r\n"
+						+ "	        predicates.add(cb.equal(root.get(\"username\"), userName));\r\n" + "		\r\n"
+						+ "		q.select(root).where(predicates.toArray(new Predicate[0]));\r\n" + "	\r\n"
+						+ "		List<UserEntity> l = em.createQuery(q).getResultList();\r\n" + "		\r\n"
+						+ "		if(l.isEmpty()) throw new SecurityException(\"Usuario no encontrado\");\r\n"
+						+ "		\r\n" + "		User u = MapperUtil.map(l.get(0), User.class);\r\n"
+						+ "		return u;\r\n" + "	}");
+
+			w.append("}");
+			w.close();
+
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			return false;
+		}
+
+		return true;
+	}
+
+	private boolean generateService(String packageNameModel, String packageNameService, Table table) {
+
+		try {
+
+			String tableName = table.getName();
+			String pathModel = packagePath + "\\" + packageNameService.replace(".", "\\") + "\\"
+					+ formatText(tableName, true) + "Service.java";
+			File f = new File(pathModel);
+			f.createNewFile();
+			Writer w = new OutputStreamWriter(new FileOutputStream(f));
+
+			w.append("package " + packageNameService + ";\n\n");
+			w.append("import " + packageName + ".util.IBaseService;\n\n");
+
+			w.append("import " + packageNameModel + "." + formatText(tableName, true) + ";\n");
+
+			Column column = table.getColumns().stream().filter(c -> c.getIsPrimaryKey()).findFirst().get();
+
+			w.append("/**\r\n" + " * \r\n" + " * @author José Rene Balderravano Hernández\r\n" + " * @since "
+					+ getDateTime() + " */\n");
+			w.append("public interface " + formatText(tableName, true) + "Service extends IBaseService"
+					+ ("<" + formatText(tableName, true) + ", " + getDataTypeJava(this.server, column.getDataType())
+							+ ">")
+
+					+ " { \n\n");
+			w.append("}");
+			w.close();
+
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			return false;
+		}
+
+		return true;
+	}
+
+	private boolean generateServiceImpl(String packageNameModel, String packageNameService,
+			String packageNameServiceImpl, String packageNameRepository, Table table) {
+
+		try {
+			String tableName = table.getName();
+			String pathModel = packagePath + "\\" + packageNameServiceImpl.replace(".", "\\") + "\\"
+					+ formatText(tableName, true) + "ServiceImpl.java";
+			File f = new File(pathModel);
+			f.createNewFile();
+			Writer w = new OutputStreamWriter(new FileOutputStream(f));
+
+			w.append("package " + packageNameServiceImpl + ";\n\n");
+
+			w.append("import org.springframework.stereotype.Service;\n");
+			if (this.architecture.equals("mvc")) {
+				w.append("import " + this.packageName + ".model." + table.getSchema() + "."
+						+ formatText(tableName, true) + "Entity;\n");
+			} else {
+				w.append("import " + packageNameModel + "." + formatText(tableName, true) + ";\n");
+				w.append("import " + packageNameRepository + "." + formatText(tableName, true) + "Repository;\n");
+			}
+
+			w.append("import " + packageNameService + "." + formatText(tableName, true) + "Service;\n");
+			w.append("import " + packageName + ".util.BaseService;\n\n");
+
+			Column column = table.getColumns().stream().filter(c -> c.getIsPrimaryKey()).findFirst().get();
+			w.append("/**\r\n" + " * \r\n" + " * @author José Rene Balderravano Hernández\r\n" + " * @since "
+					+ getDateTime() + " \n*/\n");
+			w.append("@Service\n");
+			w.append("public class " + formatText(tableName, true) + "ServiceImpl extends BaseService<"
+					+ formatText(tableName, true) + "," + getDataTypeJava(this.server, column.getDataType())
+					+ "> implements " + formatText(tableName, true) + "Service { \n\n");
+
+			w.append("\tprivate " + formatText(tableName, true) + "Repository " + formatText(tableName, false)
+					+ "Repository; \n");
+
+			w.append("\tpublic " + formatText(tableName, true) + "ServiceImpl(" + formatText(tableName, true)
+					+ "Repository " + formatText(tableName, false) + "Repository" + "){\n");
+			w.append("\t\t this." + formatText(tableName, false) + "Repository  = " + formatText(tableName, false)
+					+ "Repository; \n");
+			w.append("\t\t super.setRepository(" + formatText(tableName, false) + "Repository); \n");
+			w.append("\t}\n\n");
+			w.append("}");
+			w.close();
+
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			return false;
+		}
+
+		return true;
+	}
+
+	private boolean generateController(String packageNameDTO, String packageNameModel, String packageNameController,
+			String packageNameService, Table table) {
+		try {
+			String tableName = table.getName();
+			String pathModel = packagePath + "\\" + packageNameController.replace(".", "\\") + "\\"
+					+ formatText(tableName, true) + "Controller.java";
+			File f = new File(pathModel);
+			f.createNewFile();
+			Writer w = new OutputStreamWriter(new FileOutputStream(f));
+
+			w.append("package " + packageNameController + ";\n\n");
+
+			w.append("import org.springframework.web.bind.annotation.RequestMapping;\n");
+			w.append("import org.springframework.web.bind.annotation.RestController;\n");
+
+			if (this.architecture.equals("mvc"))
+				w.append("import " + this.packageName + ".model." + table.getSchema() + "."
+						+ formatText(tableName, true) + "Entity;\n");
+			else {
+				w.append("import " + packageNameDTO + "." + formatText(tableName, true) + "DTO;\n");
+				w.append("import " + packageNameModel + "." + formatText(tableName, true) + ";\n");
+				w.append("import " + packageNameService + "." + formatText(tableName, true) + "Service;\n");
+			}
+
+			Column column = table.getColumns().stream().filter(c -> c.getIsPrimaryKey()).findFirst().get();
+			w.append("import " + packageName + ".util.BaseController;\n\n");
+
+			w.append("/**\n" + " * \n" + " * @author José Rene Balderravano Hernández\r\n" + " * @since "
+					+ getDateTime() + "\n */\n");
+			w.append("@RestController\n");
+			w.append("@RequestMapping(path = \"" + FieldNameFormatter.toKebabCase(tableName) + "\")\n");
+			w.append("public class " + formatText(tableName, true) + "Controller extends BaseController<"
+					+ (formatText(tableName, true) + "DTO, " + formatText(tableName, true) + ", "
+							+ getDataTypeJava(this.server, column.getDataType()))
+					+ "> { \n\n");
+
+			w.append("\tprivate " + formatText(tableName, true) + "Service " + formatText(tableName, false)
+					+ "Service; \n");
+
+			w.append("\tpublic " + formatText(tableName, true) + "Controller(" + formatText(tableName, true)
+					+ "Service " + formatText(tableName, false) + "Service" + "){\n");
+			w.append("\t\t this." + formatText(tableName, false) + "Service  = " + formatText(tableName, false)
+					+ "Service; \n");
+			w.append("\t\t super.setService(" + formatText(tableName, false) + "Service); \n");
+			w.append("\t}\n\n");
+
+			w.append("}");
+			w.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+			return false;
+		}
+
+		return true;
+	}
+
+	private void addTablesSpringSecurity(String dataBaseName) {
+
+		jdbcManager.connect(dataBaseName);
+		ScriptRunner runner = new ScriptRunner(jdbcManager.getConnection(), addOAuth2, addOAuth2);
+		try {
+			InputStream is = new FileInputStream(PropertiesReading.folder_codegenerator_util + "/mvc/"
+					+ jdbcManager.getServer() + ".InicioSpringSecurity.sql");
+			BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+
+			Reader readerAux = replaceDBName(reader, dataBaseName);
+			runner.runScript(readerAux);
+		} catch (IOException | SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+	}
+
+	private Reader replaceDBName(BufferedReader reader, String dataBaseName) {
+
+		String line;
+		Reader stringReader = null;
+		try {
+			line = reader.readLine();
+			StringBuffer text = new StringBuffer();
+
+			while (line != null) {
+				String lineAux = line.replace("[DataBaseName]", dataBaseName);
+				text.append(lineAux).append("\n");
+				line = reader.readLine();
+			}
+
+			stringReader = new StringReader(text.toString());
+			return stringReader;
+
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+		return stringReader;
+	}
+
+	private String log = "";
+
+	public String printLog(String text) {
+
+		this.log = getDateTime() + " - " + text + "\n";
+		setLog(log);
+
+		return this.log;
+	}
+
+	public void setLog(String log) {
+
+		this.log = log;
+	}
+
+	public String getLog() {
+		return this.log;
+	}
+
+	private String getDateTime() {
+		LocalDateTime currentDateTime = LocalDateTime.now();
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+		String formattedDateTime = currentDateTime.format(formatter);
+		return formattedDateTime;
+	}
+
+	public int getProcessProgress() {
+		return processProgress;
+	}
+
+	public void setProcessProgress(int processProgress) {
+		this.processProgress = processProgress;
+	}
+
+	public String getProjectName() {
+		return projectName;
+	}
+
+	public void setProjectName(String projectName) {
+		this.projectName = projectName;
+	}
+
+}
