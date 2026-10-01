@@ -607,7 +607,7 @@ public class BackEndGenerator {
 
 				// Add properties
 				for (Column column : columns) {
-					if (!column.getIsForeigKey()) {
+					if (!column.getIsForeigKey()) {						
 						if (column.getIsPrimaryKey()) {
 							w.append("\t@Id\n");
 							w.append("\t@GeneratedValue(strategy= GenerationType.IDENTITY)\n");
@@ -643,8 +643,16 @@ public class BackEndGenerator {
 
 						if (fkName.equals(""))
 							fkName = column.getName();
+						
+						final String fkNameFinal = fkName;
+						
+						Optional<Column> colRepeat = columns.stream().filter(c-> c.getName().equals(fkNameFinal)).findAny();
+						
+						if(colRepeat.isPresent())
+							fkName = column.getName();
+						
 
-						String foreignKeyColumn = formatText(fkName, true);
+//						String foreignKeyColumn = formatText(fkName, true);
 						w.append("\t@ManyToOne\n");
 						w.append("\t@JoinColumn(name = \"" + column.getName() + "\")\n");
 						w.append("\tprivate " + formatText(column.getTableReference(), true) + "Entity" + " "
@@ -654,7 +662,7 @@ public class BackEndGenerator {
 
 				if (fkRef != null && !fkRef.isEmpty()) {
 					
-					for (ForeignKeyReferences foreignKeyReferences : fkRef) {
+					for (ForeignKeyReferences foreignKeyReferences : fkRef.stream().filter(fk-> fk.getDependentColumn().equals("createdBy") && fk.getDependentColumn().equals("updatedBy")).collect(Collectors.toList())) {
 						String foreignKeyColumn = formatText(foreignKeyReferences.getDependentTable(), true)+ "Entity";
 						w.append("\t@OneToMany(mappedBy = \"" + foreignKeyReferences.getDependentColumn()+ "\")\n");
 						w.append("\tprivate List<" + formatText(foreignKeyColumn, true) + ">" + " "
@@ -1244,7 +1252,7 @@ public class BackEndGenerator {
 			if (tableName.equalsIgnoreCase("Usuario") || tableName.equalsIgnoreCase("User"))
 				w.append("import " + packageNameModel + "." + formatText(tableName, true) + ";\n");
 
-			w.append("import " + packageNameModel + "." + formatText(tableName, true) + ";\n");
+			w.append("import " + packageNameModel + "." + formatText(tableName, true) + ";\n\n");
 
 			w.append("/**\n");
 			w.append(" *\n");
@@ -1291,8 +1299,7 @@ public class BackEndGenerator {
 			w.append("import " + packageName + ".util.BaseRepository;\n\n");
 
 			if (this.architecture.equals("mvc"))
-				w.append("import " + this.packageName + ".model." + table.getSchema() + "."
-						+ formatText(tableName, true) + "Entity;\n");
+				w.append("import " + this.packageName + ".model." + table.getSchema() + "."+ formatText(tableName, true) + "Entity;\n");
 			else {
 				w.append("import " + packageNameEntity + "." + formatText(tableName, true) + "Entity;\n");
 				w.append("import " + packageNameModel + "." + formatText(tableName, true) + ";\n");
@@ -1301,7 +1308,7 @@ public class BackEndGenerator {
 
 			if (tableName.equalsIgnoreCase("Usuario") || tableName.equalsIgnoreCase("User")) {
 				w.append("import java.util.ArrayList;\n" + "import java.util.List;\n"
-						+ "import org.hibernate.Session;\n" + "import com.digiret.util.MapperUtil;\n" + "import "
+						+ "import org.hibernate.Session;\n" + "import "+ packageName +".util.MapperUtil;\n" + "import "
 						+ (this.architecture.equals("mvc") ? "javax" : "jakarta") + ".persistence.EntityManager;\n"
 						+ "import " + (this.architecture.equals("mvc") ? "javax" : "jakarta")
 						+ ".persistence.criteria.CriteriaBuilder;\n" + "import "
