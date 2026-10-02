@@ -150,7 +150,7 @@ public class FrontEndGenerator2 implements IFrontEndGenerator {
 			FileManager.replaceTextInFile(pathService, "[tableName]Service",
 					FieldNameFormatter.toPascalCase(tableName) + "Service");
 
-			FileManager.replaceTextInFile(pathService, "[tableName]", FieldNameFormatter.toPascalCase(tableName));
+			FileManager.replaceTextInFile(pathService, "[tableName]", FieldNameFormatter.toKebabCase(tableName));
 
 		} catch (Exception e) {
 			System.out.println(e.getMessage());
