@@ -270,7 +270,7 @@ public class BackEndGenerator {
 
 				for (Object[] table : tables) {
 					String tableName = (String) table[1];
-					builder.append("\t\t\tauth.requestMatchers(\"/" + FieldNameFormatter.toPascalCase(tableName)
+					builder.append("\t\t\tauth.requestMatchers(\"/" + FieldNameFormatter.toKebabCase(tableName)
 							+ "/**\").permitAll();\n");
 				}
 
@@ -573,7 +573,7 @@ public class BackEndGenerator {
 				
 				List<ForeignKeyReferences> fkRef = table.getTableReferences();
 				
-				if (fkRef != null && !fkRef.isEmpty()) 
+				if (tableName.equals("EmployeeIdentity")) 
 					System.out.println();
 				
 				if (fkRef != null && !fkRef.isEmpty()) {
@@ -607,7 +607,7 @@ public class BackEndGenerator {
 
 				// Add properties
 				for (Column column : columns) {
-					if (!column.getIsForeigKey()) {						
+					if (!column.getIsForeigKey() || column.getIsPrimaryKey()) {						
 						if (column.getIsPrimaryKey()) {
 							w.append("\t@Id\n");
 							w.append("\t@GeneratedValue(strategy= GenerationType.IDENTITY)\n");
@@ -1222,7 +1222,7 @@ public class BackEndGenerator {
 					+ " { \n\n");
 
 			if (tableName.equalsIgnoreCase("Usuario") || tableName.equalsIgnoreCase("User")) {
-				w.append("\tpublic " + tableName + "Entity findByUserName(String userName);");
+				w.append("\tpublic " + tableName + "Entity findByUsername(String userName);");
 			}
 
 			w.append("}");
@@ -1387,8 +1387,13 @@ public class BackEndGenerator {
 			w.append("public interface " + formatText(tableName, true) + "Service extends IBaseService"
 					+ ("<" + formatText(tableName, true) + ", " + getDataTypeJava(this.server, column.getDataType())
 							+ ">")
-
 					+ " { \n\n");
+			
+			if (tableName.equalsIgnoreCase("Usuario") || tableName.equalsIgnoreCase("User")) {
+				w.append("\tpublic " + tableName + " findByUserName(String userName);\n");
+			}
+			
+			
 			w.append("}");
 			w.close();
 
@@ -1443,6 +1448,16 @@ public class BackEndGenerator {
 					+ "Repository; \n");
 			w.append("\t\t super.setRepository(" + formatText(tableName, false) + "Repository); \n");
 			w.append("\t}\n\n");
+			
+			if (tableName.equalsIgnoreCase("Usuario") || tableName.equalsIgnoreCase("User")) {
+				w.append("	@Override\r\n");
+				w.append("	public User findByUserName(String userName) {\n");
+				w.append( "		return "+ formatText(tableName, false)+ "Repository.findByUserName(userName);");
+				w.append( " \n\n}");
+			}
+			
+			
+			
 			w.append("}");
 			w.close();
 
